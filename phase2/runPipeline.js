@@ -1,6 +1,8 @@
+import 'dotenv/config';
 import { fetchOriginalArticle } from './fetchOriginalArticle.js';
 import { searchGoogleForArticles } from './googleSearch.js';
 import { scrapeArticleContent } from './articleScraper.js';
+import { rewriteArticle } from './llmRewrite.js';
 
 async function main() {
   try {
@@ -55,6 +57,17 @@ async function main() {
       console.log(`\n${idx + 1}. ${art.url}`);
       console.log(`   Content Length: ${art.length}`);
     });
+
+    // Step 4: Rewrite the original article using reference insights
+    console.log('\nRewriting article with LLM...');
+    const rewritten = await rewriteArticle({
+      originalArticle: { title: article.title, content: article.content },
+      referenceArticles: successfulArticles.slice(0, 2)
+    });
+
+    console.log('\n--- Rewritten Article Preview ---');
+    console.log('Length:', rewritten.length, 'characters');
+    console.log('Preview:', rewritten.slice(0, 500));
     
   } catch (error) {
     console.error('\n✗ Pipeline failed:', error.message);
