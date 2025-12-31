@@ -3,9 +3,9 @@ import * as cheerio from 'cheerio';
 
 /**
  * Searches Google for articles related to the given query
- * Returns the top 2 organic blog/article URLs
+ * Returns a list of candidate organic blog/article URLs (10-15)
  * @param {string} query - The search query (typically an article title)
- * @returns {Promise<Array<{title: string, url: string}>>} Top 2 organic results
+ * @returns {Promise<Array<{title: string, url: string}>>} Candidate organic results (10-15)
  * @throws {Error} If fewer than 2 valid results are found
  */
 export async function searchGoogleForArticles(query) {
@@ -108,18 +108,23 @@ export async function searchGoogleForArticles(query) {
 
     console.log(`Found ${filteredResults.length} search results`);
 
-    const topResults = filteredResults.slice(0, 2);
+    // Return 10-15 candidates (fail if fewer than 2)
+    const candidates = filteredResults.slice(0, 15);
 
-    if (topResults.length < 2) {
-      throw new Error(`Only found ${topResults.length} valid results, need at least 2`);
+    if (candidates.length < 2) {
+      throw new Error(`Only found ${candidates.length} valid results, need at least 2`);
     }
 
-    console.log(`Selected top ${topResults.length} reference articles:`);
-    topResults.forEach((res, idx) => {
+    if (candidates.length < 10) {
+      console.warn(`Warning: only ${candidates.length} candidates available (expected >= 10)`);
+    }
+
+    console.log(`Selected ${candidates.length} candidate reference articles (max 15):`);
+    candidates.slice(0, 5).forEach((res, idx) => {
       console.log(`  ${idx + 1}. ${res.url}`);
     });
 
-    return topResults;
+    return candidates;
 
   } catch (error) {
     if (error.message.includes('valid results')) {

@@ -1,5 +1,6 @@
 import { fetchOriginalArticle } from './fetchOriginalArticle.js';
 import { searchGoogleForArticles } from './googleSearch.js';
+import { scrapeArticleContent } from './articleScraper.js';
 
 async function main() {
   try {
@@ -16,16 +17,44 @@ async function main() {
     
     console.log('\n✓ Article fetched successfully');
     
-    // Step 2: Search Google for reference articles
+    // Step 2: Search Google for reference articles (get many candidates)
     const referenceArticles = await searchGoogleForArticles(article.title);
+    console.log(`\n✓ Google search completed successfully with ${referenceArticles.length} candidates`);
     
-    console.log('\n--- Reference Articles ---');
-    referenceArticles.forEach((ref, index) => {
-      console.log(`\n${index + 1}. ${ref.title}`);
-      console.log(`   URL: ${ref.url}`);
+    // Step 3: Scrape reference articles' content, stopping after 2 successes
+    console.log('\nScraping reference articles (need 2 successes)...');
+    const successfulArticles = [];
+    let tried = 0;
+
+    for (const ref of referenceArticles) {
+      tried += 1;
+      try {
+        const articleContent = await scrapeArticleContent(ref.url);
+        console.log('\n--- Scraped Article ---');
+        console.log('URL:', articleContent.url);
+        console.log('Content Length:', articleContent.length, 'characters');
+        console.log('Preview:', articleContent.content.slice(0, 300));
+        successfulArticles.push(articleContent);
+      } catch (scrapeError) {
+        console.error(`\nSkipping URL (scrape failed): ${ref.url}`);
+        console.error('Reason:', scrapeError.message);
+      }
+
+      if (successfulArticles.length === 2) {
+        break;
+      }
+    }
+
+    if (successfulArticles.length < 2) {
+      throw new Error(`Only scraped ${successfulArticles.length} articles after trying ${tried} URLs`);
+    }
+
+    console.log(`\n✓ Scraping complete. Tried ${tried} URLs, succeeded on ${successfulArticles.length}.`);
+    console.log('\n--- Final Reference Articles ---');
+    successfulArticles.slice(0, 2).forEach((art, idx) => {
+      console.log(`\n${idx + 1}. ${art.url}`);
+      console.log(`   Content Length: ${art.length}`);
     });
-    
-    console.log('\n✓ Google search completed successfully');
     
   } catch (error) {
     console.error('\n✗ Pipeline failed:', error.message);
