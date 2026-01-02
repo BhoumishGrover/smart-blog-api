@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import axios from 'axios';
 import { fetchOriginalArticle } from './fetchOriginalArticle.js';
 import { searchGoogleForArticles } from './googleSearch.js';
 import { scrapeArticleContent } from './articleScraper.js';
@@ -60,14 +61,40 @@ async function main() {
 
     // Step 4: Rewrite the original article using reference insights
     console.log('\nRewriting article with LLM...');
-    const rewritten = await rewriteArticle({
+    const { rewrittenContent, referenceUrls } = await rewriteArticle({
       originalArticle: { title: article.title, content: article.content },
       referenceArticles: successfulArticles.slice(0, 2)
     });
 
     console.log('\n--- Rewritten Article Preview ---');
-    console.log('Length:', rewritten.length, 'characters');
-    console.log('Preview:', rewritten.slice(0, 500));
+    console.log('Length:', rewrittenContent.length, 'characters');
+    console.log('Preview:', rewrittenContent.slice(0, 500));
+
+    // Step 5: Append references to content and create new article via backend API
+    console.log('\nAppending references and posting to backend...');
+    const referencesSection = `\n\n## References\n${referenceUrls.map(url => `- ${url}`).join('\n')}`;
+    const finalContent = rewrittenContent + referencesSection;
+
+    const newArticlePayload = {
+      title: `Updated: ${article.title}`,
+      content: finalContent,
+      original_url: `${article.original_url}-rewritten`,
+      original_article_id: article.id,
+      source: 'updated'
+    };
+
+    const backendUrl = process.env.BASE_URL || 'http://localhost:3000';
+    const postResponse = await axios.post(
+      `${backendUrl}/articles`,
+      newArticlePayload
+    );
+
+    const createdArticle = postResponse.data;
+    console.log('\n✓ Success! New article created.');
+    console.log(`Original Article ID: ${article.id}`);
+    console.log(`Rewritten Article ID: ${createdArticle.id}`);
+    console.log(`Title: ${createdArticle.title}`);
+    console.log(`Source: ${createdArticle.source}`);
     
   } catch (error) {
     console.error('\n✗ Pipeline failed:', error.message);

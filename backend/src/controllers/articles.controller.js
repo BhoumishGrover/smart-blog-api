@@ -24,14 +24,14 @@ export const scrapeArticles = async (req, res) => {
 };
 
 export const createArticle = async (req, res) => {
-  const { title, content, original_url } = req.body;
+  const { title, content, original_url, original_article_id, source } = req.body;
   if (!title || !content || !original_url) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
   try {
     const result = await pool.query(
-      'INSERT INTO articles (id, title, content, original_url, source) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [uuidv4(), title, content, original_url, 'original']
+      'INSERT INTO articles (id, title, content, original_url, original_article_id, source) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [uuidv4(), title, content, original_url, original_article_id || null, source || 'original']
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {

@@ -1,58 +1,71 @@
-import axios from "axios";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import "dotenv/config";
 
 /**
- * Groq uses an OpenAI-compatible chat completions API.
+ * Gemini uses Google's Generative AI API.
  * We will use it for summarization + rewriting.
  */
 
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+function estimateTokens(text) {
+  if (!text) return 0;
+  // Use a simple heuristic for token counting
+  return Math.ceil(text.length / 4);
+}
 
-function requireGroqKey() {
-  const key = process.env.GROQ_API_KEY;
+function requireGeminiKey() {
+  const key = process.env.GEMINI_API_KEY;
   if (!key) {
-    throw new Error("GROQ_API_KEY is not set in environment");
+    throw new Error("GEMINI_API_KEY is not set in environment");
   }
   return key;
 }
 
+function requireGeminiModel() {
+  const model = process.env.GEMINI_MODEL;
+  if (!model) {
+    throw new Error("GEMINI_MODEL is not set in environment");
+  }
+  return model;
+}
+
+const geminiModel = requireGeminiModel();
+console.log(`Using Gemini model: ${geminiModel}`);
+
+const genAI = new GoogleGenerativeAI(requireGeminiKey());
+const model = genAI.getGenerativeModel({ model: geminiModel });
+
 async function callLLM(systemPrompt, userPrompt) {
-  const apiKey = requireGroqKey();
+  const apiKey = requireGeminiKey();
+
+  const prompt = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ];
 
   try {
-    const response = await axios.post(
-      GROQ_API_URL,
-      {
-        model: "llama3-8b-8192",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.7,
-        max_tokens: 500,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
+    const result = await model.generateContent({
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }],
         },
-        timeout: 60000,
-      }
-    );
+      ],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 1500,
+      },
+    });
 
-    const content = response.data?.choices?.[0]?.message?.content;
+    const content =
+      result?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+
     if (!content) {
-      throw new Error("Empty response from Groq");
+      throw new Error("Empty response from Gemini");
     }
 
     return content.trim();
   } catch (err) {
-    if (err.response) {
-      throw new Error(
-        `Groq LLM request failed: ${err.response.status} ${err.response.statusText}`
-      );
-    }
-    throw new Error(`Groq LLM request failed: ${err.message}`);
+    throw new Error(`Gemini LLM request failed: ${err.message}`);
   }
 }
 
@@ -63,16 +76,10 @@ export async function rewriteArticle({ originalArticle, referenceArticles }) {
   if (!Array.isArray(referenceArticles) || referenceArticles.length === 0) {
     throw new Error("referenceArticles array is required");
   }
-  const MAX_ORIGINAL_CHARS = 2000;
-  const MAX_REFERENCE_CHARS = 2000;
-  const BLOCKED_DOMAINS = [
-    "pmc.ncbi.nlm.nih.gov",
-    "ncbi.nlm.nih.gov",
-    "nature.com",
-    "springer.com",
-    "elsevier.com",
-    "sciencedirect.com",
-  ];
+
+  // Increased limits, removing harsh truncation
+  const MAX_ORIGINAL_CHARS = 4000;
+  const MAX_REFERENCE_CHARS = 3000;
 
   const truncatedOriginal = originalArticle.content.slice(
     0,
@@ -83,17 +90,11 @@ export async function rewriteArticle({ originalArticle, referenceArticles }) {
 
   const summaries = [];
   for (const ref of referenceArticles) {
-    const url = ref.originalUrl || ref.url || "";
-    if (BLOCKED_DOMAINS.some((domain) => url.includes(domain))) {
-      console.log(`Skipping academic source: ${url}`);
-      continue;
-    }
-
     const truncatedContent = ref.content.slice(0, MAX_REFERENCE_CHARS);
 
     const summary = await callLLM(
       "You are an expert technical editor.",
-      `Summarize the following reference article in under 150 words.
+      `Summarize the following reference article in under 200 words.
 Focus on key insights and arguments.
 Do not copy phrases verbatim.
 
@@ -110,28 +111,43 @@ ${truncatedContent}`
     throw new Error("No suitable reference articles for summarization");
   }
 
-  const MAX_SUMMARY_CHARS = 600;
+  const MAX_SUMMARY_CHARS = 1000;
 
   const safeSummaries = summaries.map((s) => s.slice(0, MAX_SUMMARY_CHARS));
 
   const combinedSummaries = safeSummaries
     .join("\n")
-    .slice(0, 1200);
+    .slice(0, 1600);
 
-  console.log("\nRewriting article with Groq LLM...");
+  console.log("\nRewriting article with Gemini LLM...");
+
+  const estimatedInputTokens =
+    estimateTokens(truncatedOriginal) +
+    estimateTokens(combinedSummaries) +
+    estimateTokens(originalArticle.title);
+
+  console.log(
+    `\n[Token Estimate] Rewrite input ≈ ${estimatedInputTokens} tokens (Gemini safe zone)`
+  );
 
   const rewritten = await callLLM(
     "You are an expert editor and writer.",
-    `Rewrite the ORIGINAL ARTICLE below.
-Improve clarity and structure.
-Preserve intent and meaning.
-Naturally integrate insights from the REFERENCE SUMMARIES.
-Do NOT plagiarize or copy sentences.
-Output plain readable text only.
+    `Rewrite the ORIGINAL ARTICLE into a complete, publish-ready blog post.
 
-NOTE:
-The original article may be truncated due to length.
-Rewrite based on the provided content while preserving intent.
+Requirements:
+- Minimum length: 800 words
+- Use a clear structure with headings and subheadings
+- Write an engaging introduction and a strong concluding section
+- Preserve the original topic, intent, and core arguments
+- Integrate ideas from the reference summaries naturally
+- Do NOT summarize; EXPAND and elaborate thoughtfully
+- Do NOT plagiarize or copy sentences
+- Write in a professional, explanatory blog style
+- Output ONLY the article content (no meta commentary)
+
+Context notes:
+- The original article and references may be truncated
+- Use them as guidance, not as strict limits
 
 ORIGINAL TITLE:
 ${originalArticle.title}
@@ -143,5 +159,8 @@ REFERENCE SUMMARIES:
 ${combinedSummaries}`
   );
 
-  return rewritten;
+  return {
+    rewrittenContent: rewritten,
+    referenceUrls: referenceArticles.map(r => r.url)
+  };
 }
