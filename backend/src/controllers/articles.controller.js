@@ -29,11 +29,36 @@ export const createArticle = async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields' });
   }
   try {
+    // If this is an updated article, make the operation idempotent
+    if (source === 'updated' && original_article_id) {
+      const existing = await pool.query(
+        'SELECT id FROM articles WHERE original_article_id = $1 AND source = $2',
+        [original_article_id, 'updated']
+      );
+
+      if (existing.rows.length > 0) {
+        const updated = await pool.query(
+          'UPDATE articles SET title = $1, content = $2, original_url = $3, updated_at = NOW() WHERE id = $4 RETURNING *',
+          [title, content, original_url, existing.rows[0].id]
+        );
+
+        return res.status(200).json({
+          message: 'Updated existing rewritten article',
+          article: updated.rows[0],
+        });
+      }
+    }
+
+    // Otherwise, insert a new article
     const result = await pool.query(
       'INSERT INTO articles (id, title, content, original_url, original_article_id, source) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
       [uuidv4(), title, content, original_url, original_article_id || null, source || 'original']
     );
-    res.status(201).json(result.rows[0]);
+
+    res.status(201).json({
+      message: 'Article created',
+      article: result.rows[0],
+    });
   } catch (error) {
     if (error.code === '23505') { // unique violation
       res.status(409).json({ error: 'Article with this URL already exists' });
