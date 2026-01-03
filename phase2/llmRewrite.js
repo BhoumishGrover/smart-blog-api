@@ -52,7 +52,7 @@ async function callLLM(systemPrompt, userPrompt) {
       ],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 1500,
+        maxOutputTokens: 4096,
       },
     });
 
@@ -144,6 +144,12 @@ Requirements:
 - Do NOT plagiarize or copy sentences
 - Write in a professional, explanatory blog style
 - Output ONLY the article content (no meta commentary)
+- Target length: 1800–2500 words (as long and detailed as possible)
+- Expand each logical section thoroughly with explanations, examples, and context
+- Maintain paragraph depth (avoid short or shallow paragraphs)
+- Ensure the article feels comprehensive, authoritative, and long-form
+- Do not stop early unless you fully cover the topic in depth
+- Do NOT abbreviate the article for brevity; prioritize completeness over conciseness
 
 Context notes:
 - The original article and references may be truncated

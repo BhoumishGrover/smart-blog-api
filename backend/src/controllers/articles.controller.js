@@ -45,6 +45,7 @@ export const createArticle = async (req, res) => {
         return res.status(200).json({
           message: 'Updated existing rewritten article',
           article: updated.rows[0],
+          ...updated.rows[0],
         });
       }
     }
@@ -58,6 +59,7 @@ export const createArticle = async (req, res) => {
     res.status(201).json({
       message: 'Article created',
       article: result.rows[0],
+      ...result.rows[0],
     });
   } catch (error) {
     if (error.code === '23505') { // unique violation

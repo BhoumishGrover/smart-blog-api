@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import axios from 'axios';
+import readline from 'readline';
 import { fetchOriginalArticle } from './fetchOriginalArticle.js';
 import { searchGoogleForArticles } from './googleSearch.js';
 import { scrapeArticleContent } from './articleScraper.js';
@@ -8,9 +9,45 @@ import { rewriteArticle } from './llmRewrite.js';
 async function main() {
   try {
     console.log('=== Phase 2: Content Automation Pipeline ===\n');
-    
-    // Step 1: Fetch the most recent original article
-    const article = await fetchOriginalArticle();
+
+    // Step 1: Fetch all articles directly from backend
+    const backendUrl = process.env.BASE_URL || 'http://localhost:3000';
+    const response = await axios.get(`${backendUrl}/articles`);
+    const articlesArray = response.data;
+
+    if (!Array.isArray(articlesArray) || articlesArray.length === 0) {
+      console.error('Backend response shape:', response.data);
+      throw new Error('No articles found in backend');
+    }
+
+    console.log(`Fetched ${articlesArray.length} articles from backend`);
+
+    console.log('\nSelect an article to rewrite:\n');
+    articlesArray.forEach((art, idx) => {
+      console.log(`[${idx + 1}] ${art.title}`);
+    });
+
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    const articleIndex = await new Promise((resolve) => {
+      rl.question('\nEnter article number: ', (answer) => {
+        rl.close();
+        resolve(parseInt(answer, 10));
+      });
+    });
+
+    if (
+      isNaN(articleIndex) ||
+      articleIndex < 1 ||
+      articleIndex > articlesArray.length
+    ) {
+      throw new Error('Invalid article selection');
+    }
+
+    const article = articlesArray[articleIndex - 1];
     
     console.log('\n--- Article Details ---');
     console.log('ID:', article.id);
@@ -83,7 +120,6 @@ async function main() {
       source: 'updated'
     };
 
-    const backendUrl = process.env.BASE_URL || 'http://localhost:3000';
     const postResponse = await axios.post(
       `${backendUrl}/articles`,
       newArticlePayload
